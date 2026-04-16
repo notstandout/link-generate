@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public File Share</title>
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="container">
+    <h1>Public File Share</h1>
+    <p class="subtitle">Upload a file and get a public URL + QR code instantly.</p>
+
+    <section id="drop-zone" class="drop-zone">
+        <p>Drag & drop a file here, or select one.</p>
+        <input id="file-input" type="file"/>
+        <button id="upload-btn" type="button">Upload</button>
+    </section>
+
+    <section id="error" class="error hidden"></section>
+
+    <section id="result" class="result hidden">
+        <h2>Upload Complete</h2>
+        <div id="preview"></div>
+
+        <label for="public-link">Public URL</label>
+        <div class="link-row">
+            <input id="public-link" type="text" readonly/>
+            <button id="copy-btn" type="button">Copy</button>
+        </div>
+
+        <div class="qr-wrap">
+            <img id="qr-code" alt="QR code for file URL"/>
+        </div>
+    </section>
+</main>
+
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const errorEl = document.getElementById('error');
+    const resultEl = document.getElementById('result');
+    const linkInput = document.getElementById('public-link');
+    const qrCodeImg = document.getElementById('qr-code');
+    const copyBtn = document.getElementById('copy-btn');
+    const previewEl = document.getElementById('preview');
+
+    let selectedFile;
+
+    const showError = (message) => {
+        errorEl.textContent = message;
+        errorEl.classList.remove('hidden');
+    };
+
+    const clearError = () => {
+        errorEl.classList.add('hidden');
+        errorEl.textContent = '';
+    };
+
+    const setFile = (file) => {
+        selectedFile = file;
+        clearError();
+        dropZone.querySelector('p').textContent = `Selected: ${file.name}`;
+    };
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files?.[0]) {
+            setFile(e.target.files[0]);
+        }
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragging');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragging');
+        });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        const file = e.dataTransfer?.files?.[0];
+        if (file) {
+            setFile(file);
+        }
+    });
+
+    const previewMarkup = (data) => {
+        const url = data.publicUrl;
+        if (data.previewType === 'image') return `<img class="preview-image" src="${url}" alt="uploaded image"/>`;
+        if (data.previewType === 'video') return `<video class="preview-media" controls src="${url}"></video>`;
+        if (data.previewType === 'audio') return `<audio controls src="${url}"></audio>`;
+        if (data.previewType === 'pdf') return `<iframe class="preview-pdf" src="${url}" title="uploaded pdf"></iframe>`;
+        if (data.previewType === 'text') return `<iframe class="preview-text" src="${url}" title="uploaded text"></iframe>`;
+        return `<p>No inline preview available for this file type.</p>`;
+    };
+
+    uploadBtn.addEventListener('click', async () => {
+        if (!selectedFile) {
+            showError('Please choose a file first.');
+            return;
+        }
+
+        clearError();
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        try {
+            const response = await fetch('/api/upload', {method: 'POST', body: formData});
+            const data = await response.json();
+            if (!response.ok) {
+                showError(data.error || 'Upload failed.');
+                return;
+            }
+
+            resultEl.classList.remove('hidden');
+            linkInput.value = data.publicUrl;
+            qrCodeImg.src = data.qrCodeDataUrl;
+            previewEl.innerHTML = previewMarkup(data);
+        } catch (error) {
+            showError('Network error while uploading file.');
+        }
+    });
+
+    copyBtn.addEventListener('click', async () => {
+        if (!linkInput.value) return;
+        await navigator.clipboard.writeText(linkInput.value);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => copyBtn.textContent = 'Copy', 1200);
+    });
+</script>
+</body>
+</html>
